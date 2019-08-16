@@ -30,6 +30,8 @@ game.ready("MartinPythonBot")
 #   Here, you log here your id, which you can always fetch from the game object by using my_id.
 logging.info("Successfully created bot! My Player ID is {}.".format(game.my_id))
 
+ship_states = {}
+
 """ <<<Game Loop>>> """
 
 while True:
@@ -48,6 +50,9 @@ while True:
     position_choices = []  # actual coordinates
 
     for ship in me.get_ships():
+        if ship.id not in ship_states:
+            ship_states[ship.id] = "collecting"
+
         position_options = ship.position.get_surrounding_cardinals() + [ship.position]
 
         # {(0,1): (19: 38)}
@@ -70,15 +75,20 @@ while True:
             else:
                 logging.info("Attempting to move into occupied position " + str(position_dictionary[direction]))
 
-        if game_map[ship.position].halite_amount < constants.MAX_HALITE / 10 or ship.is_full:
+        if ship_states[ship.id] == "depositing":
+            move = game_map.naive_navigate(ship, me.shipyard.position)
+            position_choices.append(position_dictionary[move])
+            command_queue.append(ship.move(move))
+            if move == Direction.Still:
+                ship_states[ship.id] = "collecting"
+        elif ship_states[ship.id] == "collecting":
             directional_choice = max(halite_dictionary, key=halite_dictionary.get)
             logging.info("appending " + str(position_dictionary[directional_choice]))
             position_choices.append(position_dictionary[directional_choice])  # Where is the current ship heading?
             command_queue.append(ship.move(directional_choice))
-        else:
-            logging.info("appending " + str(position_dictionary[Direction.Still]) + "( " + str(ship.position) + ")")
-            position_choices.append(position_dictionary[Direction.Still])
-            command_queue.append(ship.stay_still())
+
+            if ship.halite_amount > constants.MAX_HALITE / 3:
+                ship_states[ship.id] = "depositing"
 
     if game.turn_number <= 200 and me.halite_amount >= constants.SHIP_COST and not game_map[me.shipyard].is_occupied:
         command_queue.append(me.shipyard.spawn())
